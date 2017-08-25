@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Self organizing map</title>
+  <link href="style.css" rel="stylesheet">
+  <script src="d3.min.js"></script>
+</head>
+<body>
+  <svg width="1200" height="400"></svg>
+</body>
+<script>
+
+const W = 30;
+const H = 30;
+
+let nodes = [];
+
+let dist = (node, ref) => {
+  return Math.sqrt( (node._x - ref._x)*(node._x - ref._x) + (node._y - ref._y)*(node._y - ref._y))
+}
+
+let findNeighbours = (ref, dist) => {
+  let r = [];
+  nodes.forEach( node => {
+    d = Math.sqrt( (node._x - ref._x)*(node._x - ref._x) + (node._y - ref._y)*(node._y - ref._y))
+    if (d <= dist) r.push(node);
+  })
+  return r;
+}
+
+// Euclidean similarity - kind of, don't care about the sqrt since it can still
+// be ordered
+let similarity = (input, node) => {
+  let d2 = (input.r - node.wR)*(input.r - node.wR) +
+    (input.g - node.wG)*(input.g - node.wG) +
+    (input.b - node.wB)*(input.b - node.wB);
+
+  return d2;
+}
+
+let findBestMatch = (input) => {
+  let bestIdx = 0;
+  let d = Number.POSITIVE_INFINITY;
+
+  nodes.forEach( (node, idx) => {
+    let score = similarity(input, node);
+    if (score < d) {
+      d = score;
+      bestIdx = idx;
+    }
+  })
+  return nodes[bestIdx];
+}
+
+
+let findNeighbourhoodSize = (t) => {
+  return 3 * Math.exp(-t/5)
+}
+
+let findLearnRate = (t) => {
+  return 2.2 * Math.exp(-t/5)
+}
+
+let compute = (input, t) => {
+  let bestMatch = findBestMatch(input);
+  let size = findNeighbourhoodSize(t);
+  let rate = findLearnRate(t);
+  let neighbours = findNeighbours(bestMatch, size);
+
+  bestMatch.input = input;
+  bestMatch.counter ++;
+
+  neighbours.forEach( node => {
+    let distance = dist(node, bestMatch);
+    let influence = Math.exp( - (distance*distance)/(2*size));
+
+    node.wR = node.wR + influence * rate * (input.r - node.wR)
+    node.wG = node.wG + influence * rate * (input.g - node.wG)
+    node.wB = node.wB + influence * rate * (input.b - node.wB)
+  })
+}
+
+// 0) Iitialize nodes and weights
+for (let i=0; i < W; i++) {
+  for (let j=0; j < H; j++) {
+    nodes.push({
+      _id: i + '_' + j,
+      _x: i,
+      _y: j,
+
+      wR: Math.random(),
+      wG: Math.random(),
+      wB: Math.random()
+    })
+  }
+}
+
+let data = [];
+for (let i=0; i < 1500; i++) {
+  data.push({
+    r: Math.random(),
+    g: Math.random(),
+    b: 0
+  })
+}
+
+
+let svg = d3.select('svg');
+
+let render = (t) => {
+  let dim = Math.floor(100 / W);
+
+  let g = svg.append('g').attr('transform', 'translate(' + (t%5)*100 + ',' + Math.floor(t/5)*100 + ')')
+  nodes.forEach( node => {
+    g.append('rect')
+      .attr('x', node._x * dim)
+      .attr('y', node._y * dim)
+      .attr('width', dim)
+      .attr('height', dim)
+      .style('stroke', 'none')
+      .style('fill', d3.rgb(node.wR*255, node.wG*255, node.wB*255))
+  })
+}
+
+
+
+render(0);
+for (let t=1; t < 10; t++) {
+
+  nodes.forEach( d => d.input = null);
+  nodes.forEach( d => d.counter = 0);
+
+  console.log(findLearnRate(t));
+  data.forEach( d => {
+    compute(d, t);
+  })
+  render(t);
+}
+
+
+let g = svg.append('g').attr('transform', 'translate(0, 250)')
+nodes.forEach( node => {
+  console.log('!', node.counter)
+  g.append('rect')
+    .attr('x', node._x * 4)
+    .attr('y', node._y * 4)
+    .attr('width', 4)
+    .attr('height', 4)
+    .style('stroke', 'none')
+    //.style('fill', node.input === null? 'none':  d3.rgb(node.input.r*255, node.input.g*255, node.input.b*255))
+    .style('fill', node.counter === 0? 'black':  d3.rgb(node.counter*30, node.counter*30, node.counter*30))
+})
+
+
+
+/*
+console.log(neighbours(nodes[0], 3))
+console.log(bestMatch({r:0.5, g:0.5, b:0.5}))
+console.log(neighbourhoodSize(1));
+console.log(neighbourhoodSize(2));
+console.log(neighbourhoodSize(3));
+console.log(neighbourhoodSize(4));
+*/
+
+
+
+</script>
+</html>
