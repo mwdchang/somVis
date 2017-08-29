@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Self organizing map</title>
+  <link href="style.css" rel="stylesheet">
+  <script src="d3.min.js"></script>
+  <script src="som.js"></script>
+</head>
+<body>
+  <svg width="1200" height="800"></svg>
+</body>
+<script>
+
+let similarity = (input, node) => {
+  // return (input.AVG - node.AVG)*(input.AVG - node.AVG) + (input.OBP - node.OBP)*(input.OBP - node.OBP);
+  let x = (input.R - node.R)*(input.R - node.R)
+        + (input.G - node.G)*(input.G - node.G)
+        + (input.B - node.B)*(input.B - node.B);
+  return Math.sqrt(x);
+}
+
+let initFn = () => {
+  return {
+    R: Math.random(),
+    G: Math.random(),
+    B: Math.random()
+  }
+}
+
+const W = 15;
+const H = 15;
+let som = new SOM(W, H, initFn, similarity);
+
+
+let compute = (input, t) => {
+  let bestMatch = som.findBestMatch(input);
+  let size = som.findNeighbourhoodSize(t);
+  let rate = som.findLearnRate(t);
+  let neighbours = som.findNeighbours(bestMatch, size);
+
+  bestMatch.players.push(input.PLAYER);
+  bestMatch.input = input;
+  bestMatch.counter ++;
+
+  let _update = (node, attr, influence, rate) => {
+    node[attr]= node[attr] + influence * rate * (input[attr] - node[attr]);
+  };
+
+  neighbours.forEach( node => {
+    let distance = som.dist(node, bestMatch);
+    let influence = Math.exp( - (distance*distance)/(2*size));
+
+    _update(node, 'R', influence, rate);
+    _update(node, 'G', influence, rate);
+    _update(node, 'B', influence, rate);
+  })
+}
+
+
+const data = [];
+for (let i=0; i < 1500; i++) {
+  data.push(initFn());
+}
+console.log('data size', data.length);
+
+
+
+let svg = d3.select('svg');
+
+let render = (t) => {
+  let dim = Math.floor(100 /  W);
+  let offset = t*2;
+  let nodes = som.getNodes();
+
+  let g = svg.append('g').attr('transform', 'translate(' + (offset%5)*100 + ',' + Math.floor(offset/5)*100 + ')')
+  nodes.forEach( node => {
+
+
+    g.append('rect')
+      .attr('x', node._x * dim)
+      .attr('y', node._y * dim)
+      .attr('width', dim)
+      .attr('height', dim)
+      .style('stroke', 'none')
+      .style('fill', d3.rgb(node.R*255, node.G*255, node.B*255));
+  })
+}
+
+
+
+let nodes = som.getNodes();
+nodes.forEach( d => d.input = null);
+
+render(0);
+for (let t=0.5; t <= 7; t+=0.5) {
+
+  nodes.forEach( d => d.input = null);
+  nodes.forEach( d => d.counter = 0);
+  nodes.forEach( d => d.players = []);
+
+  // console.log(som.findLearnRate(t));
+  data.forEach( d => {
+    compute(d, t);
+  })
+  render(t);
+}
+
+
+let g = svg.append('g').attr('transform', 'translate(550, 0)');
+nodes.forEach( node => {
+  g.append('rect')
+    .attr('x', node._x * 10)
+    .attr('y', node._y * 10)
+    .attr('width', 10)
+    .attr('height', 10)
+    .style('stroke', 'none')
+    //.style('fill', node.input === null? 'none':  d3.rgb(node.input.r*255, node.input.g*255, node.input.b*255))
+    .style('fill', node.counter === 0? 'none':  d3.rgb(node.counter*40, node.counter*40, node.counter*40))
+})
+
+
+
+/*
+console.log(neighbours(nodes[0], 3))
+console.log(bestMatch({r:0.5, g:0.5, b:0.5}))
+console.log(neighbourhoodSize(1));
+console.log(neighbourhoodSize(2));
+console.log(neighbourhoodSize(3));
+console.log(neighbourhoodSize(4));
+*/
+
+
+
+</script>
+</html>

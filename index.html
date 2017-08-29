@@ -5,31 +5,54 @@
   <link href="style.css" rel="stylesheet">
   <script src="d3.min.js"></script>
   <script src="som.js"></script>
+  <script src="mlb-2016.js"></script>
 </head>
 <body>
-  <svg width="1200" height="400"></svg>
+  <section>
+    <p>
+      Classification of MLB batters in 2016 with Self-Organizing Map (SOM).
+      Similarity is measured by strikeout-rate, batting-average and walk-rate.
+    </p>
+  <svg width="1100" height="800"></svg>
+  </section>
 </body>
 <script>
 
-// Euclidean similarity - kind of, don't care about the sqrt since it can still
-// be ordered
 let similarity = (input, node) => {
-  let d2 = (input.r - node.wR)*(input.r - node.wR) +
-    (input.g - node.wG)*(input.g - node.wG) +
-    (input.b - node.wB)*(input.b - node.wB);
-  return d2;
+  // return (input.AVG - node.AVG)*(input.AVG - node.AVG) + (input.OBP - node.OBP)*(input.OBP - node.OBP);
+  //return (input.HR - node.HR)*(input.HR- node.HR) + (input.SB - node.SB)*(input.SB - node.SB)
+  // + (input.K - node.K) * (input.K - node.K);
+  // return Math.sqrt((input.K - node.K)*(input.K - node.K));
+  return Math.sqrt(
+    (input.K_RATE - node.K_RATE)*(input.K_RATE - node.K_RATE) +
+    (input.AVG - node.AVG)*(input.AVG - node.AVG) +
+    // (input.HR_RATE - node.HR_RATE)*(input.HR_RATE - node.HR_RATE) +
+    (input.BB_RATE - node.BB_RATE)*(input.BB_RATE - node.BB_RATE)
+  )
 }
 
 let initFn = () => {
   return {
-    wR: Math.random(),
-    wG: Math.random(),
-    wB: Math.random()
+    AB: Math.random()*200,
+    AVG: Math.random(),
+    OBP: Math.random(),
+    SB: Math.random()*20,
+    K_RATE: Math.random(),
+    HR_RATE: Math.random(),
+    BB_RATE: Math.random()
   }
 }
 
-const W = 30;
-const H = 30;
+const W = 11;
+const H = 11;
+const NUM_PER_ROW = 8;
+const TRACKER = [
+  'Trout, Mike',
+  'Harper, Bryce',
+  'Gordon, Dee',
+  'Posey, Buster'
+];
+
 let som = new SOM(W, H, initFn, similarity);
 
 
@@ -39,67 +62,146 @@ let compute = (input, t) => {
   let rate = som.findLearnRate(t);
   let neighbours = som.findNeighbours(bestMatch, size);
 
+  bestMatch.players.push(input.PLAYER);
   bestMatch.input = input;
   bestMatch.counter ++;
+
+  let _update = (node, attr, influence, rate) => {
+    node[attr]= node[attr] + influence * rate * (input[attr] - node[attr]);
+  };
 
   neighbours.forEach( node => {
     let distance = som.dist(node, bestMatch);
     let influence = Math.exp( - (distance*distance)/(2*size));
 
-    node.wR = node.wR + influence * rate * (input.r - node.wR)
-    node.wG = node.wG + influence * rate * (input.g - node.wG)
-    node.wB = node.wB + influence * rate * (input.b - node.wB)
+    _update(node, 'AVG', influence, rate);
+    _update(node, 'OBP', influence, rate);
+    _update(node, 'SB', influence, rate);
+    _update(node, 'K_RATE', influence, rate);
+    _update(node, 'HR_RATE', influence, rate);
+    _update(node, 'BB_RATE', influence, rate);
+
   })
 }
 
 
-let data = [];
-for (let i=0; i < 1500; i++) {
-  data.push({
-    r: Math.random(),
-    g: Math.random(),
-    b: Math.random()
-  })
-}
+const data = mlb2016.filter( d => d.AB >= 50).map( d => {
+  d.POS = d.POS.split('/')[0];
+  d.K_RATE = d.K / d.AB;
+  d.HR_RATE = d.HR / d.AB;
+  d.BB_RATE = d.BB / d.AB;
+  return d;
+});
+console.log('data size', data.length);
 
+let colorMap = d3.scaleOrdinal(d3.schemeCategory10)
+  .domain(['1B', '2B', '3B', 'SS', 'DH', 'OF', '??'])
+
+
+let colorMap2 = d3.scaleOrdinal(d3.schemeCategory10).domain([1, 2, 3, 4, 5, 6]);
 
 let svg = d3.select('svg');
 
+
 let render = (t) => {
-  let dim = Math.floor(100 / W);
+  let dim = Math.floor(120 /  W);
   let offset = t*2;
   let nodes = som.getNodes();
 
-  let g = svg.append('g').attr('transform', 'translate(' + (offset%5)*100 + ',' + Math.floor(offset/5)*100 + ')')
+  let g = svg.append('g').attr('transform', 'translate(' + (offset%NUM_PER_ROW)*120 + ',' + Math.floor(offset/NUM_PER_ROW)*120 + ')')
+
+  let BB_MAX = d3.max(nodes.map(d => d.BB_RATE));
+  let HR_MAX = d3.max(nodes.map(d => d.HR_RATE));
+  let K_MAX = d3.max(nodes.map(d => d.K_RATE));
+  let AVG_MAX = d3.max(nodes.map(d => d.AVG));
+  let _r = (v) => {
+    return Math.floor(v / 20)*20;
+  }
+
   nodes.forEach( node => {
+    // console.log(node.input);
+    // let c = node.input === null? '#FFF' : colorMap(node.input.POS);
+    /*
+    let hr = node.HR;
+    let sb = node.SB;
+    let k = node.K;
+    let c = d3.rgb(255*hr/70, 255*sb/80, 255*k/240);
+    */
+    let c = d3.rgb(
+      0, // _r(node.BB_RATE/BB_MAX*255),
+      0, // _r(node.AVG/AVG_MAX*255),
+      _r(node.K_RATE/K_MAX*255)
+    );
+
+
     g.append('rect')
-      .attr('x', node._x * dim)
-      .attr('y', node._y * dim)
-      .attr('width', dim)
-      .attr('height', dim)
-      .style('stroke', 'none')
-      .style('fill', d3.rgb(node.wR*255, node.wG*255, node.wB*255))
+      .attr('x', node._x * dim+1)
+      .attr('y', node._y * dim+1)
+      .attr('width', dim-1)
+      .attr('height', dim-1)
+      .style('stroke-width', 2)
+      .style('stroke', () => {
+        let stroke = 'none';
+
+        TRACKER.forEach( (p, i) => {
+          if (node.players.indexOf(p) >= 0) {
+            stroke = colorMap2(i);
+          }
+        });
+        return stroke;
+      })
+      .style('fill', c)
+      .style('fill-opacity', 0.35)
+      .on('click', function() {
+        console.log(node.players);
+      });
+      //.style('fill', d3.rgb(node.wR*255, node.wG*255, node.wB*255))
   })
 }
 
 
 
 let nodes = som.getNodes();
+nodes.forEach( d => d.input = null);
+nodes.forEach( d => d.players = []);
+
 render(0);
-for (let t=0.5; t <= 7; t+=0.5) {
+for (let t=0.5; t <= 11; t+=0.5) {
 
   nodes.forEach( d => d.input = null);
   nodes.forEach( d => d.counter = 0);
+  nodes.forEach( d => d.players = []);
 
-  console.log(som.findLearnRate(t));
+  // console.log(som.findLearnRate(t));
   data.forEach( d => {
     compute(d, t);
   })
   render(t);
 }
 
+let legend = svg.append('g').attr('transform', 'translate(' + (NUM_PER_ROW * 120 + 10) + ',0)')
+  .classed('legend', true);
 
-let g = svg.append('g').attr('transform', 'translate(500, 0)');
+TRACKER.forEach( (p, i) => {
+  let g = legend.append('g').attr('transform', 'translate(0,'+  i*25 + ')');
+  g.append('rect')
+   .attr('x', 0)
+   .attr('y', 0)
+   .attr('height', 18)
+   .attr('width', 18)
+   .style('fill', colorMap2(i));
+
+  g.append('text')
+   .attr('x', 22)
+   .attr('y', 13)
+   .text(p);
+});
+
+
+
+
+/*
+let g = svg.append('g').attr('transform', 'translate(550, 0)');
 nodes.forEach( node => {
   g.append('rect')
     .attr('x', node._x * 10)
@@ -110,6 +212,7 @@ nodes.forEach( node => {
     //.style('fill', node.input === null? 'none':  d3.rgb(node.input.r*255, node.input.g*255, node.input.b*255))
     .style('fill', node.counter === 0? 'none':  d3.rgb(node.counter*40, node.counter*40, node.counter*40))
 })
+*/
 
 
 

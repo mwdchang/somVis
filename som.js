@@ -38,11 +38,11 @@ class SOM {
   }
 
   findNeighbourhoodSize(t) {
-    return 18 * Math.exp(-t/7)
+    return (this.gwidth/2) * Math.exp(-t/7)
   }
 
   findLearnRate(t) {
-    return 3.5 * Math.exp(-t/7)
+    return 2.5 * Math.exp(-t/7)
   }
 
   findBestMatch(input) {
