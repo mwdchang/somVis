@@ -3,43 +3,55 @@
 <head>
   <title>Self organizing map</title>
   <link href="style.css" rel="stylesheet">
-  <script src="d3.min.js"></script>
+  <!--<script src="d3.min.js"></script>-->
+  <script src="https://d3js.org/d3.v4.min.js"></script>
   <script src="som.js"></script>
   <script src="mlb-2016.js"></script>
 </head>
 <body>
   <section>
+    <h4>Self-Organizing Maps</h4>
     <p>
       Classification of MLB batters in 2016 with Self-Organizing Map (SOM).
-      Similarity is measured by strikeout-rate, batting-average and walk-rate.
+      Similarity is measured by a combination of strikeout-rate, batting-average and walk-rate.
+      The charts below shows the SOM across 20 iterations (the first one is initialization with random generator).
     </p>
-  <svg width="1100" height="800"></svg>
+    <p>
+      Four batters are tracked across iterations, with two (Trout and Harper) similar type of players.
+    </p>
+    <p>
+      <ul>
+        <li>Click the toggle button to see the distribution of K, BB, AVG or combination of all 3 attributes </li>
+        <li>Hover over each grid-cell to see batter placement </li>
+      </ul>
+    </p>
+    <div style="display:flex; flex-direction: row">
+      <span class="button active" onclick="toggle('all')">All</span>
+      <span class="button" onclick="toggle('k')">K</span>
+      <span class="button" onclick="toggle('avg')">Avg</span>
+      <span class="button" onclick="toggle('bb')">BB</span>
+    </div>
+    <br>
+    <svg width="1100" height="360"></svg>
+    <div id="players-box" style="min-height:4rem"></div>
   </section>
+  <a href="https://github.com/mwdchang/somVis"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/38ef81f8aca64bb9a64448d0d70f1308ef5341ab/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f6461726b626c75655f3132313632312e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png"></a>
 </body>
 <script>
 
 let similarity = (input, node) => {
-  // return (input.AVG - node.AVG)*(input.AVG - node.AVG) + (input.OBP - node.OBP)*(input.OBP - node.OBP);
-  //return (input.HR - node.HR)*(input.HR- node.HR) + (input.SB - node.SB)*(input.SB - node.SB)
-  // + (input.K - node.K) * (input.K - node.K);
-  // return Math.sqrt((input.K - node.K)*(input.K - node.K));
   return Math.sqrt(
     (input.K_RATE - node.K_RATE)*(input.K_RATE - node.K_RATE) +
     (input.AVG - node.AVG)*(input.AVG - node.AVG) +
-    // (input.HR_RATE - node.HR_RATE)*(input.HR_RATE - node.HR_RATE) +
     (input.BB_RATE - node.BB_RATE)*(input.BB_RATE - node.BB_RATE)
   )
 }
 
 let initFn = () => {
   return {
-    AB: Math.random()*200,
-    AVG: Math.random(),
-    OBP: Math.random(),
-    SB: Math.random()*20,
-    K_RATE: Math.random(),
-    HR_RATE: Math.random(),
-    BB_RATE: Math.random()
+    AVG: Math.random()*0.5,
+    K_RATE: Math.random()*0.5,
+    BB_RATE: Math.random()*0.5
   }
 }
 
@@ -54,33 +66,26 @@ const TRACKER = [
 ];
 
 let som = new SOM(W, H, initFn, similarity);
-
+som.setLearnRate(2);
 
 let compute = (input, t) => {
   let bestMatch = som.findBestMatch(input);
   let size = som.findNeighbourhoodSize(t);
   let rate = som.findLearnRate(t);
   let neighbours = som.findNeighbours(bestMatch, size);
-
-  bestMatch.players.push(input.PLAYER);
-  bestMatch.input = input;
-  bestMatch.counter ++;
-
   let _update = (node, attr, influence, rate) => {
     node[attr]= node[attr] + influence * rate * (input[attr] - node[attr]);
   };
+
+  bestMatch.players.push(input.PLAYER);
 
   neighbours.forEach( node => {
     let distance = som.dist(node, bestMatch);
     let influence = Math.exp( - (distance*distance)/(2*size));
 
     _update(node, 'AVG', influence, rate);
-    _update(node, 'OBP', influence, rate);
-    _update(node, 'SB', influence, rate);
     _update(node, 'K_RATE', influence, rate);
-    _update(node, 'HR_RATE', influence, rate);
     _update(node, 'BB_RATE', influence, rate);
-
   })
 }
 
@@ -88,18 +93,11 @@ let compute = (input, t) => {
 const data = mlb2016.filter( d => d.AB >= 50).map( d => {
   d.POS = d.POS.split('/')[0];
   d.K_RATE = d.K / d.AB;
-  d.HR_RATE = d.HR / d.AB;
   d.BB_RATE = d.BB / d.AB;
   return d;
 });
-console.log('data size', data.length);
-
-let colorMap = d3.scaleOrdinal(d3.schemeCategory10)
-  .domain(['1B', '2B', '3B', 'SS', 'DH', 'OF', '??'])
-
 
 let colorMap2 = d3.scaleOrdinal(d3.schemeCategory10).domain([1, 2, 3, 4, 5, 6]);
-
 let svg = d3.select('svg');
 
 
@@ -107,34 +105,32 @@ let render = (t) => {
   let dim = Math.floor(120 /  W);
   let offset = t*2;
   let nodes = som.getNodes();
-
   let g = svg.append('g').attr('transform', 'translate(' + (offset%NUM_PER_ROW)*120 + ',' + Math.floor(offset/NUM_PER_ROW)*120 + ')')
 
   let BB_MAX = d3.max(nodes.map(d => d.BB_RATE));
-  let HR_MAX = d3.max(nodes.map(d => d.HR_RATE));
   let K_MAX = d3.max(nodes.map(d => d.K_RATE));
   let AVG_MAX = d3.max(nodes.map(d => d.AVG));
-  let _r = (v) => {
-    return Math.floor(v / 20)*20;
-  }
 
   nodes.forEach( node => {
-    // console.log(node.input);
-    // let c = node.input === null? '#FFF' : colorMap(node.input.POS);
-    /*
-    let hr = node.HR;
-    let sb = node.SB;
-    let k = node.K;
-    let c = d3.rgb(255*hr/70, 255*sb/80, 255*k/240);
-    */
     let c = d3.rgb(
-      0, // _r(node.BB_RATE/BB_MAX*255),
-      0, // _r(node.AVG/AVG_MAX*255),
-      _r(node.K_RATE/K_MAX*255)
+      node.BB_RATE/BB_MAX*255,
+      node.AVG/AVG_MAX*255,
+      node.K_RATE/K_MAX*255
     );
 
+    let datum = {
+      K_RATE: node.K_RATE,
+      BB_RATE: node.BB_RATE,
+      AVG: node.AVG,
+      K_MAX: K_MAX,
+      AVG_MAX: AVG_MAX,
+      BB_MAX: BB_MAX,
+      players: node.players.slice(0)
+    };
 
     g.append('rect')
+      .datum(datum)
+      .classed('cell', true)
       .attr('x', node._x * dim+1)
       .attr('y', node._y * dim+1)
       .attr('width', dim-1)
@@ -151,28 +147,25 @@ let render = (t) => {
         return stroke;
       })
       .style('fill', c)
-      .style('fill-opacity', 0.35)
-      .on('click', function() {
-        console.log(node.players);
+      .style('fill-opacity', 0.7)
+      .on('mouseover', function(d) {
+        d3.select('#players-box').text('Similar players: ' + d.players.join(' / '));
+      })
+      .on('mouseout', function(d) {
+        d3.select('#players-box').text(null);
       });
-      //.style('fill', d3.rgb(node.wR*255, node.wG*255, node.wB*255))
   })
 }
 
 
 
 let nodes = som.getNodes();
-nodes.forEach( d => d.input = null);
 nodes.forEach( d => d.players = []);
 
 render(0);
-for (let t=0.5; t <= 11; t+=0.5) {
-
-  nodes.forEach( d => d.input = null);
-  nodes.forEach( d => d.counter = 0);
+for (let t=0.5; t <= 11.5; t+=0.5) {
   nodes.forEach( d => d.players = []);
 
-  // console.log(som.findLearnRate(t));
   data.forEach( d => {
     compute(d, t);
   })
@@ -197,33 +190,41 @@ TRACKER.forEach( (p, i) => {
    .text(p);
 });
 
+d3.selectAll('.button').on('click', function() {
+  d3.selectAll('.button').classed('active', false);
+  d3.select(this).classed('active', true);
+});
 
 
+function toggle(type) {
+  let cells = d3.selectAll('.cell');
 
-/*
-let g = svg.append('g').attr('transform', 'translate(550, 0)');
-nodes.forEach( node => {
-  g.append('rect')
-    .attr('x', node._x * 10)
-    .attr('y', node._y * 10)
-    .attr('width', 10)
-    .attr('height', 10)
-    .style('stroke', 'none')
-    //.style('fill', node.input === null? 'none':  d3.rgb(node.input.r*255, node.input.g*255, node.input.b*255))
-    .style('fill', node.counter === 0? 'none':  d3.rgb(node.counter*40, node.counter*40, node.counter*40))
-})
-*/
+  if (type === 'bb') {
+    cells.each(function(d) {
+      d3.select(this).style('fill',
+        d3.rgb( d.BB_RATE/d.BB_MAX*255, 0, 0));
+    });
+  }
+  if (type === 'avg') {
+    cells.each(function(d) {
+      d3.select(this).style('fill',
+        d3.rgb(0, d.AVG/d.AVG_MAX*255, 0));
+    });
+  }
+  if (type === 'k') {
+    cells.each(function(d) {
+      d3.select(this).style('fill',
+        d3.rgb(0, 0, d.K_RATE/d.K_MAX*255 ));
+    });
+  }
+  if (type === 'all') {
+    cells.each(function(d) {
+      d3.select(this).style('fill',
+        d3.rgb( d.BB_RATE/d.BB_MAX*255, d.AVG/d.AVG_MAX*255, d.K_RATE/d.K_MAX*255 ));
+    });
+  }
+}
 
-
-
-/*
-console.log(neighbours(nodes[0], 3))
-console.log(bestMatch({r:0.5, g:0.5, b:0.5}))
-console.log(neighbourhoodSize(1));
-console.log(neighbourhoodSize(2));
-console.log(neighbourhoodSize(3));
-console.log(neighbourhoodSize(4));
-*/
 
 
 

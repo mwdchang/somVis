@@ -8,7 +8,10 @@ class SOM {
     this.simFn = simFn;
 
     this.initialize();
+    this.learnRate = 2.5;
   }
+
+  setLearnRate(v) { this.learnRate = v; }
 
   getNodes() { return this.nodes; }
 
@@ -42,7 +45,7 @@ class SOM {
   }
 
   findLearnRate(t) {
-    return 2.5 * Math.exp(-t/7)
+    return this.learnRate * Math.exp(-t/7)
   }
 
   findBestMatch(input) {
@@ -58,7 +61,6 @@ class SOM {
     })
     return this.nodes[bestIdx];
   }
-
 
 
 
